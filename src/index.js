@@ -1,27 +1,46 @@
+const Alexa = require('ask-sdk-core')
+
 const csv = require('csv-parser')
-const { S3 } = require('aws-sdk')
-const s3 = new S3()
+
+const initGetBinResponse = require('./helpers/getBinResponse')
 
 const buildBinMessage = require('./helpers/buildBinMessage')
 const C = require('./constants')
+const getHandlers = require('./helpers/getHandlers')
+const s3 = require('./aws')
 
 const log = console.log
-const today = Date.now()
 
-const allNextBinDetails = []
+const getBinResponse = initGetBinResponse(
+  buildBinMessage,
+  C,
+  csv,
+  log,
+  s3
+)
 
-s3.getObject(C.s3Params).createReadStream()
-    .on('error', (error) => {
-      log(error)
-    })
+const {
+  LaunchRequestHandler,
+  CreateReminderIntentHandler,
+  WhichBinIntentHandler,
+  HelpIntentHandler,
+  CancelAndStopIntentHandler,
+  SessionEndedRequestHandler,
+  ErrorHandler
+} = getHandlers(C, getBinResponse)
 
-    .pipe(csv(C.binHeaders))
-    .on('data', (row) => {
-      const binDate = Date.parse(row.Date.trim())
-      if (binDate > today) allNextBinDetails.push(row)
-    })
+const skillBuilder = Alexa.SkillBuilders.custom()
 
-    .on('end', () => {
-      const nextBinMessage = buildBinMessage(allNextBinDetails[0])
-      log(nextBinMessage)
-    })
+exports.handler = skillBuilder
+  .addRequestHandlers(
+    LaunchRequestHandler,
+    CreateReminderIntentHandler,
+    WhichBinIntentHandler,
+    HelpIntentHandler,
+    CancelAndStopIntentHandler,
+    SessionEndedRequestHandler,
+  )
+  .addErrorHandlers(ErrorHandler)
+  //The below currently doesnt work as new Alexa.DefaultApiClient() returns empty object
+  // .withApiClient(new Alexa.DefaultApiClient())
+  .lambda()

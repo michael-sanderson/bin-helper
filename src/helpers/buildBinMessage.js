@@ -1,1 +1,1 @@
-module.exports = binObject => `On ${binObject.Date}, the ${binObject.Colour} ${binObject.Type} bin will be collected.`
+module.exports = binObject => `On <say-as interpret-as="date" format="ymd">${binObject.Date}</say-as>, the ${binObject.Colour} ${binObject.Type} bin will be collected.`
