@@ -1,0 +1,1 @@
+module.exports = binObject => `On ${binObject.Date}, the ${binObject.Colour} ${binObject.Type} bin will be collected.`

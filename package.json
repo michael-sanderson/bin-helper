@@ -1,0 +1,17 @@
+{
+  "name": "binhelper",
+  "version": "1.0.0",
+  "description": "An alexa skill to read bin collection days from csv file and relay information",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Michael Sanderson",
+  "license": "ISC",
+  "dependencies": {
+    "csv-parser": "^2.3.2"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.602.0"
+  }
+}
