@@ -1,0 +1,175 @@
+variables:
+  FUNCTION_NAME: binHelper
+  BUCKET_NAME: bincollectiondata
+  BUCKET_FOLDER: function-code-versions
+  COMPATIBLE_RUNTIMES: nodejs12.x
+
+# ANCHORS
+
+.terraform-init: &terraform-init
+  cd terraform && terraform init
+
+.terraform-plan: &terraform-plan
+  terraform plan
+
+.terraform-apply: &terraform-apply
+  terraform apply -auto-approve
+
+# EXECUTORS
+
+.executor-terraform: &executor-terraform
+  image: hashicorp/terraform@sha256:1723e713a978720fd4d039b1c902bba358c0d7a14c6d052426712c05ddafaadc
+  tags:
+    - docker
+
+.executor-node: &executor-node
+  image: node:12.14.1-alpine@sha256:fe2cd1b5a9faf21497b73b37f24ad391ac39e72167e435217e9009c836e6da5d
+  tags:
+    - docker
+
+.executor-aws: &executor-aws
+  image: mesosphere/aws-cli@sha256:f699e09bef1629866c3e7f9f2a1c6df4840b73ee078229433d1ae075b4426468
+  tags:
+    - docker
+
+stages:
+  - validate
+  - release
+  - test-function
+  - build-function
+  - deploy-function
+  - test-layer
+  - build-layer
+  - deploy-layer
+
+# TERRAFORM - RELEASES DUMMY FUNCTION AND RELATED INFRASTRUCTURE TO AWS
+
+terraform-plan:
+  stage: validate
+  allow_failure: false
+  <<: *executor-terraform
+  script:
+    - *terraform-init
+    - *terraform-plan
+
+terraform-apply:
+  stage: release
+  allow_failure: false
+  <<: *executor-terraform
+  script:
+    - *terraform-init
+    - *terraform-apply
+
+# NODEJS - DEPLOYS FUNCTION CODE
+
+audit:
+  stage: test-function
+  <<: *executor-node
+  script:
+    - npm audit
+
+build:
+  stage: build-function
+  allow_failure: false
+  <<: *executor-aws
+  script:
+    - cd src
+    - zip build.zip -rq *
+    - aws s3 cp build.zip s3://$BUCKET_NAME/$BUCKET_FOLDER/$FUNCTION_NAME/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA.zip
+
+deploy:
+  stage: deploy-function
+  allow_failure: false
+  <<: *executor-aws
+  script:
+    - >
+      aws lambda update-function-code
+      --function-name $FUNCTION_NAME
+      --s3-bucket $BUCKET_NAME
+      --s3-key $BUCKET_FOLDER/$FUNCTION_NAME/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA.zip
+
+# NODEJS - DEPLOYS FUNCTION LAYERS
+
+audit-csv-parser:
+  stage: test-layer
+  image: node:10-alpine@sha256:05d83a422bacdd7cdeed38c2943047eabb3743cf372e1ae5eb29f3169fed0337
+  tags:
+    - docker
+  retry: 2
+  script: cd layers/csv-parser && npm audit
+
+audit-ask-sdk-core:
+  stage: test-layer
+  image: node:10-alpine@sha256:05d83a422bacdd7cdeed38c2943047eabb3743cf372e1ae5eb29f3169fed0337
+  tags:
+    - docker
+  retry: 2
+  script: cd layers/ask-sdk-core && npm audit
+
+build-csv-parser:
+  stage: build-layer
+  when: manual
+  <<: *executor-aws
+  script:
+    - apk --no-cache add nodejs nodejs-npm
+    - mkdir nodejs
+    - cp package.json nodejs/package.json
+    - cp package-lock.json nodejs/package-lock.json
+    - cd nodejs
+    - NODE_ENV=production npm ci
+    - rm package.json package-lock.json
+    - cd ..
+    - zip build.zip -rq nodejs
+    - aws s3 cp build.zip s3://$BUCKET_NAME/layers/csv-parser/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA.zip
+
+build-ask-sdk-core:
+  stage: build-layer
+  when: manual
+  <<: *executor-aws
+  script:
+    - apk --no-cache add nodejs nodejs-npm
+    - mkdir nodejs
+    - cp package.json nodejs/package.json
+    - cp package-lock.json nodejs/package-lock.json
+    - cd nodejs
+    - NODE_ENV=production npm ci
+    - rm package.json package-lock.json
+    - cd ..
+    - zip build.zip -rq nodejs
+    - aws s3 cp build.zip s3://$BUCKET_NAME/layers/ask-sdk-core/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA.zip
+
+deploy-csv-parser:
+  stage: deploy-layer
+  when: manual
+  allow_failure: false
+  <<: *executor-aws
+  script:
+    - >
+      export node_modules=$(
+      cat layers/csv-parser/package.json |
+      jq -r '.dependencies | keys | join(", ")'
+      )
+    - >
+      aws lambda publish-layer-version
+      --layer-name csv-parser
+      --description "Contains the following node modules and their dependencies: $node_modules"
+      --content S3Bucket=$BUCKET_NAME,S3Key=layers/csv-parser/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA.zip
+      --compatible-runtimes $COMPATIBLE_RUNTIMES
+
+deploy-ask-sdk-core:
+  stage: deploy-layer
+  when: manual
+  allow_failure: false
+  <<: *executor-aws
+  script:
+    - >
+      export node_modules=$(
+      cat layers/ask-sdk-core/package.json |
+      jq -r '.dependencies | keys | join(", ")'
+      )
+    - >
+      aws lambda publish-layer-version
+      --layer-name ask-sdk-core
+      --description "Contains the following node modules and their dependencies: $node_modules"
+      --content S3Bucket=$BUCKET_NAME,S3Key=layers/ask-sdk-core/$CI_COMMIT_REF_NAME/$CI_COMMIT_SHORT_SHA.zip
+      --compatible-runtimes $COMPATIBLE_RUNTIMES
