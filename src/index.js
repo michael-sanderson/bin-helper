@@ -22,7 +22,6 @@ const getBinResponse = initGetBinResponse(
 const {
   LaunchRequestHandler,
   CreateReminderIntentHandler,
-  WhichBinIntentHandler,
   HelpIntentHandler,
   CancelAndStopIntentHandler,
   SessionEndedRequestHandler,
@@ -35,12 +34,10 @@ exports.handler = skillBuilder
   .addRequestHandlers(
     LaunchRequestHandler,
     CreateReminderIntentHandler,
-    WhichBinIntentHandler,
     HelpIntentHandler,
     CancelAndStopIntentHandler,
     SessionEndedRequestHandler,
   )
+  .withApiClient(new Alexa.DefaultApiClient())
   .addErrorHandlers(ErrorHandler)
-  //The below currently doesnt work as new Alexa.DefaultApiClient() returns empty object
-  // .withApiClient(new Alexa.DefaultApiClient())
   .lambda()

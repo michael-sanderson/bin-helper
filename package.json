@@ -12,6 +12,8 @@
     "csv-parser": "^2.3.2"
   },
   "devDependencies": {
+    "ask-sdk-core": "^2.7.0",
+    "ask-sdk-model": "^1.25.1",
     "aws-sdk": "^2.602.0"
   }
 }
